@@ -1,0 +1,33 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions/positions.yaml
+
+clients:
+  - url: http://obs-loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Container name, stripped of Docker's leading slash
+      # (/selfapp -> selfapp)
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: container
+
+      # stdout vs stderr
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: stream
+
+      # Which compose project each container belongs to, so this stack's
+      # own containers (obs-prometheus, obs-grafana, ...) are visibly
+      # distinguishable in Grafana from selfapp's own containers
+      # (selfapp, selfweb, selfdb) rather than one undifferentiated pile
+      # of logs.
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label: compose_project

@@ -1,0 +1,53 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - obs-alertmanager:9093
+
+rule_files:
+  - /etc/prometheus/alert.rules.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["obs-node-exporter:9100"]
+
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["obs-cadvisor:8080"] # container-internal port, not the remapped 8085 host port
+
+  # ----------------------------------------------------------------------
+  # selfapp — REQUIRES micrometer-registry-prometheus, NOT YET IN pom.xml
+  # ----------------------------------------------------------------------
+  # The real pom.xml you shared has spring-boot-starter-actuator but not
+  # micrometer-registry-prometheus. Actuator alone exposes /actuator/health,
+  # /actuator/info etc. in JSON — it does NOT expose /actuator/prometheus
+  # without this extra dependency. Scraping this target as-is will show
+  # "context deadline exceeded" or a 404 in Prometheus's own "Targets"
+  # page (http://localhost:9090/targets) until you add:
+  #
+  #   <dependency>
+  #     <groupId>io.micrometer</groupId>
+  #     <artifactId>micrometer-registry-prometheus</artifactId>
+  #     <runtime>runtime</runtime>
+  #   </dependency>
+  #
+  # to app/pom.xml, and confirm
+  # management.endpoints.web.exposure.include=health,info,prometheus
+  # is set (via application.properties or the MANAGEMENT_ENDPOINTS_WEB_
+  # EXPOSURE_INCLUDE env var) so the endpoint is actually exposed over
+  # HTTP, not just present on the classpath. This job is left enabled
+  # rather than commented out so it shows up as a clearly-failing target
+  # in Prometheus, a visible reminder rather than a silent gap.
+  - job_name: selfapp
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["selfapp:8080"]

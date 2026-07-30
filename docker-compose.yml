@@ -1,0 +1,166 @@
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: obs-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle # allows `curl -X POST :9090/-/reload` after editing rules, without a restart
+    ports:
+      - "9090:9090"
+    networks:
+      - obs-net
+      - self-net
+
+  # Renders alertmanager.yml.template -> a real alertmanager.yml with the
+  # actual Slack webhook URL substituted in, on a shared volume, BEFORE
+  # alertmanager starts. Alertmanager's own config format doesn't support
+  # ${VAR} substitution (unlike this compose file), so this render step
+  # is necessary — without it, the literal string "${SLACK_WEBHOOK_URL}"
+  # would end up in Alertmanager's config and every Slack notification
+  # would silently fail.
+  alertmanager-init:
+    image: alpine:3.20
+    container_name: obs-alertmanager-init
+    restart: "no"
+    environment:
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:?Set SLACK_WEBHOOK_URL in .env}
+    volumes:
+      - ./alertmanager:/template:ro
+      - alertmanager-config:/rendered
+    command: >
+      sh -c "apk add --no-cache gettext >/dev/null &&
+             envsubst < /template/alertmanager.yml.template > /rendered/alertmanager.yml"
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: obs-alertmanager
+    restart: unless-stopped
+    depends_on:
+      alertmanager-init:
+        condition: service_completed_successfully
+        # Requires Docker Compose v2.20+ for the `service_completed_successfully`
+        # condition. Run `docker compose version` to check if you hit an
+        # error here.
+    volumes:
+      - alertmanager-config:/etc/alertmanager:ro
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    ports:
+      - "9093:9093"
+    networks:
+      - obs-net
+
+  grafana:
+    image: grafana/grafana-oss:11.1.0
+    container_name: obs-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - obs-net
+    depends_on:
+      - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: obs-loki
+    restart: unless-stopped
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    networks:
+      - obs-net
+
+  promtail:
+    image: grafana/promtail:3.1.0
+    container_name: obs-promtail
+    restart: unless-stopped
+    volumes:
+      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - promtail-positions:/tmp/positions
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - obs-net
+    depends_on:
+      - loki
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: obs-node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    ports:
+      - "9100:9100"
+    networks:
+      - obs-net
+    # NOTE: on Docker Desktop (macOS/Windows), node-exporter reports
+    # metrics for the lightweight Linux VM Docker Desktop runs inside,
+    # not your actual laptop hardware. On native Linux it reports the
+    # real host. Either way it's real metrics from something, just be
+    # aware of which "host" you're actually looking at.
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: obs-cadvisor
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8085:8080" # host 8085, since selfweb already uses host port 80 and cAdvisor's own default (8080) is a common collision point with other local tooling
+    networks:
+      - obs-net
+    # cAdvisor gives real per-container CPU/memory/network metrics for
+    # selfapp, selfweb, and selfdb with zero changes to those images —
+    # this is what backs the "application" dashboard's container-level
+    # panels. It is NOT the same as application-level metrics (request
+    # counts, error rates), see README for that gap.
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+  promtail-positions:
+  alertmanager-config:
+
+networks:
+  obs-net:
+    driver: bridge
+  # Joins the network docker-buildlab-selfapp's own docker-compose.yml
+  # already created, so Prometheus can reach `selfapp:8080` by service
+  # name. This stack is meant to be started AFTER that one — see
+  # scripts/up.sh, which checks for this network and fails fast with a
+  # clear message if it isn't there yet, rather than starting Prometheus
+  # against a target that doesn't exist.
+  self-net:
+    external: true

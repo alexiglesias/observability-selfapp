@@ -1,0 +1,4 @@
+# Real Slack webhook and Grafana admin password live only in .env
+.env
+
+.DS_Store

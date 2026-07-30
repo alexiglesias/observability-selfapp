@@ -1,0 +1,88 @@
+{
+  "title": "selfapp - Application Overview",
+  "uid": "selfapp-app-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "10s",
+  "tags": ["selfapp", "application"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request Rate (requires micrometer-registry-prometheus - see README)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (uri, status) (rate(http_server_requests_seconds_count{job=\"selfapp\"}[5m]))",
+          "legendFormat": "{{uri}} [{{status}}]",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "description": "Standard Spring Boot Micrometer metric name (http_server_requests_seconds_count). This panel will show 'No data' until micrometer-registry-prometheus is added to app/pom.xml and the /actuator/prometheus endpoint is actually exposed — see prometheus/prometheus.yml's comments and the README for the exact dependency to add. Not tested against a running instance with that dependency present."
+    },
+    {
+      "id": 2,
+      "title": "Error Rate - 5xx (requires micrometer-registry-prometheus)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(http_server_requests_seconds_count{job=\"selfapp\",status=~\"5..\"}[5m]))",
+          "legendFormat": "5xx errors/sec",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
+      "description": "Same dependency requirement as the Request Rate panel."
+    },
+    {
+      "id": 3,
+      "title": "selfapp / selfweb / selfdb - Container CPU (works today, no app changes needed)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (name) (rate(container_cpu_usage_seconds_total{name=~\"selfapp|selfweb|selfdb\"}[5m])) * 100",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "title": "selfapp / selfweb / selfdb - Container Memory (works today, no app changes needed)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "container_memory_usage_bytes{name=~\"selfapp|selfweb|selfdb\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "title": "selfapp Logs (Loki)",
+      "type": "logs",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "loki", "uid": "Loki" },
+      "targets": [
+        {
+          "expr": "{container=~\"selfapp|selfweb\"}",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
