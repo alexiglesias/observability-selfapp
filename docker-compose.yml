@@ -156,11 +156,11 @@ volumes:
 networks:
   obs-net:
     driver: bridge
-  # Joins the network docker-buildlab-selfapp's own docker-compose.yml
-  # already created, so Prometheus can reach `selfapp:8080` by service
-  # name. This stack is meant to be started AFTER that one — see
-  # scripts/up.sh, which checks for this network and fails fast with a
-  # clear message if it isn't there yet, rather than starting Prometheus
-  # against a target that doesn't exist.
+  # docker-buildlab-selfapp's network. Compose prefixes network names with
+  # the project (folder) name, so its "self-net" really exists as
+  # "docker-buildlab-selfapp_self-net". Override with SELFAPP_NETWORK in .env
+  # if you cloned that repo into a folder with another name.
+  # Start that stack first: scripts/up.sh checks the network exists.
   self-net:
     external: true
+    name: ${SELFAPP_NETWORK:-docker-buildlab-selfapp_self-net}
