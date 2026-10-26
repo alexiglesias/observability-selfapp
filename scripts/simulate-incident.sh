@@ -1,42 +1,68 @@
 #!/usr/bin/env bash
-# Simulates the two incidents the alert rules in prometheus/alert.rules.yml
-# are meant to catch, so you can confirm the whole pipeline actually
-# works end-to-end: Prometheus rule fires -> Alertmanager -> Slack.
+# Causes a real incident on purpose, to watch the whole alert pipeline work:
+# Prometheus rule -> Alertmanager -> Slack (FIRING, then RESOLVED after the
+# script puts everything back).
 #
-# Usage:
-#   ./scripts/simulate-incident.sh cpu       # load the host CPU for 90s
-#   ./scripts/simulate-incident.sh down      # stop selfapp for 90s
+# Usage: ./scripts/simulate-incident.sh <cpu|app|db> [seconds]
+#   cpu  keeps every CPU of Docker's VM busy  -> HighCPUUsage (warning)
+#   app  stops selfapp                        -> InstanceDown (critical)
+#   db   stops selfdb (MySQL)                 -> ContainerDown (critical)
+#
+# Default duration: 240 seconds. An alert reaches Slack after its "for:"
+# time (1-2 minutes) plus up to ~1 minute of scrape, evaluation and
+# Alertmanager's group_wait. Whatever happens (even Ctrl+C), the script
+# restores what it stopped.
 set -euo pipefail
 
 MODE="${1:-}"
+DURATION="${2:-240}"
 
-if [ "${MODE}" != "cpu" ] && [ "${MODE}" != "down" ]; then
-  echo "Usage: $0 <cpu|down>" >&2
+usage() {
+  echo "Usage: $0 <cpu|app|db> [seconds, default 240]" >&2
   exit 1
-fi
+}
 
-if [ "${MODE}" = "cpu" ]; then
-  CPUS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
-  echo "[INFO] Loading ${CPUS} CPU core(s) for 90s using a throwaway stress container."
-  echo "[INFO] This loads the REAL host/VM CPU (containers share the host"
-  echo "[INFO] kernel's CPU by default, no cgroup limit is set here), so"
-  echo "[INFO] node-exporter should see it and HighCPUUsage should fire"
-  echo "[INFO] within a couple of minutes (2m 'for' duration + scrape interval)."
-  echo "[INFO] Watch it live at: http://localhost:9090/alerts"
-  docker run --rm polinux/stress stress --cpu "${CPUS}" --timeout 90s
-  echo "[DONE] Stress finished. The alert should auto-resolve within a few minutes."
+case "${MODE}" in
+  cpu | app | db) ;;
+  *) usage ;;
+esac
+[[ "${DURATION}" =~ ^[0-9]+$ ]] || usage
 
-elif [ "${MODE}" = "down" ]; then
-  echo "[INFO] Stopping selfapp for 90s to trigger InstanceDown."
-  echo "[INFO] Watch it live at: http://localhost:9090/alerts"
-  docker stop selfapp
-  echo "[INFO] selfapp stopped. Waiting 90s before restarting it..."
-  sleep 90
-  docker start selfapp
-  echo "[DONE] selfapp restarted. The alert should auto-resolve within a few minutes."
-fi
+restore() {
+  case "${MODE}" in
+    cpu) docker rm -f incident-cpu >/dev/null 2>&1 || true ;;
+    app) docker start selfapp >/dev/null ;;
+    db) docker start selfdb >/dev/null ;;
+  esac
+  echo "[DONE] Restored. Slack gets RESOLVED within ~5 minutes (Alertmanager's group_interval)."
+}
+# Run restore() when the script ends for any reason, including Ctrl+C
+trap restore EXIT
 
-echo ""
-echo "Check Slack (#alerts) for the notification, and Alertmanager's own"
-echo "UI at http://localhost:9093 to confirm it registered the alert even"
-echo "if the Slack webhook itself isn't configured correctly yet."
+case "${MODE}" in
+  cpu)
+    CPUS="$(docker info --format '{{.NCPU}}')"
+    echo "[INFO] Keeping all ${CPUS} CPUs of Docker's VM busy for ${DURATION}s -> HighCPUUsage"
+    # One endless loop per CPU, in a throwaway Alpine container (works on
+    # Apple Silicon and Intel, nothing to install)
+    docker run -d --rm --name incident-cpu alpine:3.23 \
+      sh -c "for i in \$(seq ${CPUS}); do (while :; do :; done) & done; wait" >/dev/null
+    ;;
+  app)
+    echo "[INFO] Stopping selfapp for ${DURATION}s -> InstanceDown"
+    echo "[INFO] (RabbitMQNoConsumers follows: the app is also RabbitMQ's consumer)"
+    docker stop selfapp >/dev/null
+    ;;
+  db)
+    echo "[INFO] Stopping selfdb (MySQL) for ${DURATION}s -> ContainerDown"
+    docker stop selfdb >/dev/null
+    ;;
+esac
+
+echo "[INFO] Watch: http://localhost:9090/alerts (inactive -> pending -> firing)"
+echo "[INFO]        http://localhost:9093 (Alertmanager) and Slack #alerts"
+
+for ((elapsed = 0; elapsed < DURATION; elapsed += 30)); do
+  echo "[INFO] ${elapsed}s / ${DURATION}s"
+  sleep "$((DURATION - elapsed < 30 ? DURATION - elapsed : 30))"
+done

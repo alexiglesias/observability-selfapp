@@ -64,11 +64,12 @@ Two dashboards are pre-provisioned under the "selfapp" folder: **System Overview
 ## Testing the alert pipeline end-to-end
 
 ```bash
-./scripts/simulate-incident.sh cpu    # loads the host CPU for 90s -> HighCPUUsage
-./scripts/simulate-incident.sh down   # stops selfapp for 90s -> InstanceDown
+./scripts/simulate-incident.sh cpu   # keeps Docker's CPUs busy  -> HighCPUUsage
+./scripts/simulate-incident.sh app   # stops selfapp             -> InstanceDown (+ RabbitMQNoConsumers)
+./scripts/simulate-incident.sh db    # stops selfdb (MySQL)      -> ContainerDown
 ```
 
-Watch http://localhost:9090/alerts for the rule to go from inactive -> pending -> firing, and check the `#alerts` Slack channel for the notification. `InstanceDown` also fires for real if `selfapp` crashes on its own, not just during this deliberate test.
+Each test runs for 240 seconds (pass another number of seconds as a second argument) and always restores what it stopped, even on Ctrl+C. Watch http://localhost:9090/alerts go from inactive to pending to firing; Slack gets FIRING a minute or two after the rule's `for:` time, and RESOLVED within about 5 minutes after the script ends. Every message links to the alert's runbook in [docs/runbooks.md](docs/runbooks.md).
 
 ## How the Slack webhook stays out of Git
 
