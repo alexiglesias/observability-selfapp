@@ -154,7 +154,7 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     ports:
-      - "127.0.0.1:8085:8080" # cAdvisor UI; 8080 inside, 8085 on the Mac 
+      - "127.0.0.1:8085:8080" # cAdvisor UI; 8080 inside, 8085 on the Mac
     networks:
       - obs-net
     # Per-container CPU/memory/network for every container, with no changes

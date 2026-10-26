@@ -1,0 +1,50 @@
+# Runs checks on every `git commit`, so problems never reach a PR.
+#   brew install pre-commit && pre-commit install    # once per clone
+#   pre-commit run --all-files                       # run manually
+# The last two hooks run `make check` / `make test`, so Docker must be running.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+
+  # Secret scanner: blocks commits containing tokens, keys or webhook URLs
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # The repo's own checks, only when a file they cover changes
+  - repo: local
+    hooks:
+      - id: make-check
+        name: make check (compose, promtool, amtool, alloy, dashboards)
+        entry: make check
+        language: system
+        pass_filenames: false
+        files: ^(docker-compose\.yml|\.env\.example|prometheus/|alertmanager/|alloy/|grafana/|scripts/)
+      - id: make-test
+        name: make test (alert rule and routing tests)
+        entry: make test
+        language: system
+        pass_filenames: false
+        files: ^(prometheus/|alertmanager/|tests/)
