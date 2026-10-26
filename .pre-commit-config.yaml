@@ -41,7 +41,7 @@ repos:
         entry: make check
         language: system
         pass_filenames: false
-        files: ^(docker-compose\.yml|\.env\.example|prometheus/|alertmanager/|alloy/|grafana/|scripts/)
+        files: ^(docker-compose\.yml|\.env\.example|prometheus/|alertmanager/|alloy/|grafana/|scripts/|tests/|Makefile)
       - id: make-test
         name: make test (alert rule and routing tests)
         entry: make test

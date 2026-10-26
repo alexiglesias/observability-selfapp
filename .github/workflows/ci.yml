@@ -1,0 +1,110 @@
+# CI: runs on every pull request and on every push to main.
+#
+#   1. static - pre-commit hooks (lint, YAML, shellcheck), make check
+#               (config validation) and make test (alert rule and routing
+#               unit tests). No running stack.
+#   2. e2e    - starts the real app (docker-buildlab-selfapp) and this
+#               monitoring stack on the runner, then tests/e2e.sh checks
+#               that metrics, logs, dashboards and alerts actually flow.
+#
+# Slack isn't contacted from CI: the webhook stays a placeholder, and the
+# alert test stops at Alertmanager. Everything runs on GitHub's free runners.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push to the same PR/branch cancels the run that is still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: Lint & unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: pre-commit hooks
+        env:
+          SKIP: make-check,make-test # run as separate steps below
+        run: |
+          pipx install pre-commit==4.7.0
+          pre-commit run --all-files --show-diff-on-failure
+
+      - name: make check
+        run: make check
+
+      - name: make test
+        run: make test
+
+  e2e:
+    name: End-to-end
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # Both repos side by side, in folders named after them: Compose uses the
+      # folder name as project name, which names the app's network and is what
+      # Alloy filters logs by.
+      - uses: actions/checkout@v7
+        with:
+          path: observability-selfapp
+
+      - uses: actions/checkout@v7
+        with:
+          repository: alexiglesias/docker-buildlab-selfapp
+          path: docker-buildlab-selfapp
+
+      - name: Start the app (docker-buildlab-selfapp)
+        working-directory: docker-buildlab-selfapp
+        run: |
+          cp .env.example .env
+          # Random passwords, used only for this run
+          sed -i -E "s/^MYSQL_ROOT_PASSWORD=.*/MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)/" .env
+          sed -i -E "s/^DB_PASS=.*/DB_PASS=$(openssl rand -hex 16)/" .env
+          sed -i -E "s/^RABBITMQ_PASS=.*/RABBITMQ_PASS=$(openssl rand -hex 16)/" .env
+          docker compose up -d --build --wait --wait-timeout 600
+
+      - name: Start the monitoring stack
+        working-directory: observability-selfapp
+        run: |
+          cp .env.example .env
+          ./scripts/up.sh
+
+      - name: End-to-end test
+        working-directory: observability-selfapp
+        run: make e2e
+
+      - name: Show containers, healthchecks and logs
+        if: failure()
+        run: |
+          docker ps -a
+          for c in $(docker ps -aq); do
+            echo "== healthcheck of $(docker inspect --format '{{.Name}}' "$c")"
+            docker inspect --format '{{if .State.Health}}{{range .State.Health.Log}}exit {{.ExitCode}}: {{.Output}}{{end}}{{else}}(no healthcheck){{end}}' "$c" | tail -4
+          done
+          # --env-file: works even if the job failed before .env was created
+          (cd observability-selfapp && docker compose --env-file .env.example logs --tail 40) || true
+          (cd docker-buildlab-selfapp && docker compose logs --tail 40) || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          (cd observability-selfapp && docker compose --env-file .env.example down -v) || true
+          (cd docker-buildlab-selfapp && docker compose down -v) || true
