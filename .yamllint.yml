@@ -1,0 +1,10 @@
+# yamllint settings (used by pre-commit and CI)
+extends: default
+
+rules:
+  line-length: disable # long PromQL expressions and URLs read better on one line
+  document-start: disable # no "---" at the top of each file
+  comments:
+    min-spaces-from-content: 1 # allow "key: value # comment"
+  truthy:
+    check-keys: false
