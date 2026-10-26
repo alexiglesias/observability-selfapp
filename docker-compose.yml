@@ -140,11 +140,9 @@ services:
       - "8085:8080" # host 8085, since selfweb already uses host port 80 and cAdvisor's own default (8080) is a common collision point with other local tooling
     networks:
       - obs-net
-    # cAdvisor gives real per-container CPU/memory/network metrics for
-    # selfapp, selfweb, and selfdb with zero changes to those images —
-    # this is what backs the "application" dashboard's container-level
-    # panels. It is NOT the same as application-level metrics (request
-    # counts, error rates), see README for that gap.
+    # Per-container CPU/memory/network for every container, with no changes
+    # to the images. Request counts and errors come from the app itself
+    # (the selfapp job in prometheus/prometheus.yml).
 
 volumes:
   prometheus-data:

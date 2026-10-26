@@ -35,10 +35,7 @@ for _ in $(seq 1 30); do
     echo "[DONE] Grafana is up: http://localhost:3000"
     echo "[DONE] Prometheus:    http://localhost:9090"
     echo "[DONE] Alertmanager:  http://localhost:9093"
-    echo "[DONE] Check http://localhost:9090/targets - the 'selfapp' target"
-    echo "[DONE] will show as DOWN until micrometer-registry-prometheus is"
-    echo "[DONE] added to app/pom.xml (see README). Everything else should"
-    echo "[DONE] show UP."
+    echo "[DONE] Targets:       http://localhost:9090/targets (all should be UP)"
     exit 0
   fi
   sleep 2
