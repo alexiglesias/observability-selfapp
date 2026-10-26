@@ -31,3 +31,10 @@ scrape_configs:
     metrics_path: /actuator/prometheus
     static_configs:
       - targets: ["selfapp:8080"]
+
+
+  # RabbitMQ's built-in Prometheus plugin (rabbitmq_prometheus, enabled in the
+  # official image): connections, queues and message rates for selfmq.
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["selfmq:15692"]
