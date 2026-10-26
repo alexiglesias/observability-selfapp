@@ -142,6 +142,10 @@ services:
     privileged: true # as cAdvisor's docs recommend: full access to the host's cgroups
     devices:
       - /dev/kmsg # kernel messages, used for out-of-memory (OOM) events
+    command:
+      - --housekeeping_interval=30s # re-measure containers every 30s (default 1s): far less CPU
+      - --docker_only=true # only Docker containers, not every process group on the VM
+      - --disable_metrics=advtcp,cpu_topology,hugetlb,percpu,perf_event,process,referenced_memory,resctrl,sched,tcp,udp
     volumes:
       - /:/rootfs:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro # Docker API: container names and labels
