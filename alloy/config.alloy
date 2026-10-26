@@ -1,0 +1,57 @@
+// Grafana Alloy: collects the logs of the Docker containers and sends them
+// to Loki. Replaces Promtail, which reached end of life on 2 March 2026.
+// Live view of this pipeline: http://localhost:12345
+
+// 1. Find the containers to read logs from, through the Docker API.
+//    Only the two Compose projects of this lab: the app and this stack.
+discovery.docker "containers" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "5s"
+
+	filter {
+		name   = "label"
+		values = [
+			"com.docker.compose.project=docker-buildlab-selfapp",
+			"com.docker.compose.project=observability-selfapp",
+		]
+	}
+}
+
+// 2. Turn Docker's metadata into the labels you filter by in Grafana.
+discovery.relabel "containers" {
+	targets = []
+
+	// Container name without Docker's leading slash: /selfapp -> selfapp
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+
+	// stdout or stderr
+	rule {
+		source_labels = ["__meta_docker_container_log_stream"]
+		target_label  = "stream"
+	}
+
+	// Which Compose project the container belongs to
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		target_label  = "compose_project"
+	}
+}
+
+// 3. Read the logs of those containers.
+loki.source.docker "containers" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.docker.containers.targets
+	relabel_rules = discovery.relabel.containers.rules
+	forward_to    = [loki.write.loki.receiver]
+}
+
+// 4. Send them to Loki.
+loki.write "loki" {
+	endpoint {
+		url = "http://obs-loki:3100/loki/api/v1/push"
+	}
+}

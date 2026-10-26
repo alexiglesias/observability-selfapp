@@ -11,7 +11,7 @@ This is the observability project from the roadmap, adapted to monitor **selfapp
 | Prometheus | Scrapes metrics, evaluates alert rules |
 | Alertmanager | Routes firing alerts to Slack |
 | Grafana | Dashboards, pre-provisioned on startup |
-| Loki + Promtail | Centralizes container logs (via Docker service discovery, no per-container config needed) |
+| Loki + Grafana Alloy | Centralizes container logs: Alloy finds the app's and this stack's containers through the Docker API and ships their logs to Loki |
 | Node Exporter | Host-level CPU/memory/disk metrics |
 | cAdvisor | Per-container CPU/memory metrics for `selfapp`/`selfweb`/`selfdb`, no app changes required |
 
@@ -24,7 +24,7 @@ docker-buildlab-selfapp (separate compose project, started first)
 observability-selfapp (this project)                                      |
   prometheus  <---- scrapes ---- node-exporter, cadvisor, selfapp:8080 ----/
   prometheus  ----> alertmanager ----> Slack (#alerts)
-  promtail    ----> tails Docker container logs ----> loki
+  alloy    ----> reads Docker container logs ----> loki
   grafana     <---- queries ---- prometheus, loki
 ```
 
@@ -57,6 +57,7 @@ cp .env.example .env
 Grafana: http://localhost:3000 (login: `admin` / whatever you set as `GRAFANA_ADMIN_PASSWORD`)
 Prometheus: http://localhost:9090
 Alertmanager: http://localhost:9093
+Alloy (log pipeline): http://localhost:12345
 
 Two dashboards are pre-provisioned under the "selfapp" folder: **System Overview** and **Application Overview** — no manual import needed, Grafana loads them from `grafana/dashboards/*.json` on startup via the provisioning config in `grafana/provisioning/`.
 

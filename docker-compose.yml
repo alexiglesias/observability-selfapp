@@ -67,15 +67,23 @@ services:
     networks:
       - obs-net
 
-  promtail:
-    image: grafana/promtail:3.1.0
-    container_name: obs-promtail
+  # Collects container logs and ships them to Loki (replaces Promtail, EOL
+  # since March 2026). Pipeline UI: http://localhost:12345
+  alloy:
+    image: grafana/alloy:v1.21.2
+    container_name: obs-alloy
     restart: unless-stopped
     volumes:
-      - ./promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - promtail-positions:/tmp/positions
-    command: -config.file=/etc/promtail/config.yml
+      - alloy-data:/var/lib/alloy/data # remembers how far it has read each log
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    ports:
+      - "127.0.0.1:12345:12345"
     networks:
       - obs-net
     depends_on:
@@ -126,7 +134,7 @@ volumes:
   prometheus-data:
   grafana-data:
   loki-data:
-  promtail-positions:
+  alloy-data:
   alertmanager-data:
 
 # The Slack webhook URL, taken from SLACK_WEBHOOK_URL in .env and mounted as a
