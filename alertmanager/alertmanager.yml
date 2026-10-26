@@ -19,6 +19,16 @@ route:
       receiver: slack-critical
       repeat_interval: 30m
 
+# When a scrape target is down, its warnings are only consequences of that
+# (e.g. no traffic -> no error rate): mute warnings with the same job label
+# until the target is back, so Slack shows the cause, not the symptoms.
+inhibit_rules:
+  - source_matchers:
+      - alertname="InstanceDown"
+    target_matchers:
+      - severity="warning"
+    equal: ["job"]
+
 # The Slack channel is chosen when the webhook is created, so there's no
 # "channel:" setting here.
 receivers:
@@ -26,10 +36,10 @@ receivers:
     slack_configs:
       - send_resolved: true
         title: '{{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
-        text: '{{ .CommonAnnotations.description }}'
+        text: "{{ .CommonAnnotations.description }}{{ if .CommonAnnotations.runbook_url }}\n<{{ .CommonAnnotations.runbook_url }}|Runbook>{{ end }}"
 
   - name: slack-critical
     slack_configs:
       - send_resolved: true
         title: ':rotating_light: {{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
-        text: '{{ .CommonAnnotations.description }}'
+        text: "{{ .CommonAnnotations.description }}{{ if .CommonAnnotations.runbook_url }}\n<{{ .CommonAnnotations.runbook_url }}|Runbook>{{ end }}"

@@ -1,15 +1,11 @@
-groups:
-  - name: selfapp-observability
-    rules:
-      - alert: HighCPUUsage
-        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "High CPU usage on {{ $labels.instance }}"
-          description: "CPU usage has been above 80% for more than 2 minutes (current value: {{ $value | printf \"%.1f\" }}%)."
+# Alert rules. Each alert has a runbook in docs/runbooks.md and unit tests in
+# tests/alert.rules.test.yml (run: promtool test rules tests/alert.rules.test.yml).
+#
+# severity: critical = something is down; warning = degraded, look soon.
 
+groups:
+  - name: availability
+    rules:
       - alert: InstanceDown
         expr: up == 0
         for: 1m
@@ -17,13 +13,118 @@ groups:
           severity: critical
         annotations:
           summary: "{{ $labels.job }} target down"
-          description: "Prometheus target {{ $labels.instance }} (job {{ $labels.job }}) has been unreachable for more than 1 minute."
+          description: "Prometheus can't scrape {{ $labels.instance }} (job {{ $labels.job }}) for more than 1 minute."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#instancedown"
+
+      # selfdb and selfweb expose no metrics of their own, so `up` can't see
+      # them. cAdvisor can: a container that stops disappears from its metrics.
+      - alert: ContainerDown
+        expr: |
+          absent(container_last_seen{name="selfdb"})
+          or absent(container_last_seen{name="selfweb"})
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container {{ $labels.name }} is not running"
+          description: "cAdvisor has not seen the {{ $labels.name }} container for more than 1 minute."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#containerdown"
+
+  - name: selfapp
+    rules:
+      - alert: SelfappHighErrorRate
+        expr: |
+          sum by (job) (rate(http_server_requests_seconds_count{job="selfapp", status=~"5..", uri!~"/actuator.*"}[5m]))
+            /
+          sum by (job) (rate(http_server_requests_seconds_count{job="selfapp", uri!~"/actuator.*"}[5m]))
+            > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "selfapp: {{ $value | humanizePercentage }} of requests fail"
+          description: "More than 5% of HTTP requests to selfapp returned a 5xx error for 5 minutes."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#selfapphigherrorrate"
+
+      - alert: SelfappSlowResponses
+        expr: |
+          histogram_quantile(0.95,
+            sum by (job, le) (rate(http_server_requests_seconds_bucket{job="selfapp", uri!~"/actuator.*"}[5m]))
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "selfapp: p95 response time is {{ $value | humanizeDuration }}"
+          description: "95% of requests should finish in under 1 second; for 5 minutes they haven't."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#selfappslowresponses"
+
+      - alert: SelfappHighHeapUsage
+        expr: |
+          sum by (job) (jvm_memory_used_bytes{job="selfapp", area="heap"})
+            /
+          sum by (job) (jvm_memory_max_bytes{job="selfapp", area="heap"} > 0)
+            > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "selfapp: JVM heap {{ $value | humanizePercentage }} full"
+          description: "The Java heap has been more than 90% full for 10 minutes; the app may slow down or run out of memory."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#selfapphighheapusage"
+
+  - name: rabbitmq
+    rules:
+      - alert: RabbitMQNoConsumers
+        expr: sum by (job) (rabbitmq_queue_consumers) == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ: no consumers"
+          description: "No application is listening on RabbitMQ's queues, so user.created events pile up unprocessed."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#rabbitmqnoconsumers"
+
+      - alert: RabbitMQMessagesPilingUp
+        expr: sum by (job) (rabbitmq_queue_messages_ready) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RabbitMQ: {{ $value }} messages waiting"
+          description: "More than 100 messages have been waiting in RabbitMQ's queues for 5 minutes; the consumer is too slow or stuck."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#rabbitmqmessagespilingup"
+
+  - name: host
+    rules:
+      # [1m], not [5m]: a 5-minute average needs minutes of load before it
+      # crosses 80%, so short spikes (and the CPU test) would never fire it.
+      - alert: HighCPUUsage
+        expr: 100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])) * 100) > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage has been above 80% for 2 minutes (now {{ $value | printf \"%.0f\" }}%)."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#highcpuusage"
+
+      - alert: HighMemoryUsage
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Less than 10% of memory has been available for 5 minutes (used: {{ $value | printf \"%.0f\" }}%)."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#highmemoryusage"
 
       - alert: LowDiskSpace
-        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        expr: node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"} * 100 < 10
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Low disk space on {{ $labels.instance }}"
-          description: "Less than 10% free space remaining on / (current: {{ $value | printf \"%.1f\" }}%)."
+          description: "Less than 10% free space left on / (now {{ $value | printf \"%.1f\" }}%)."
+          runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#lowdiskspace"

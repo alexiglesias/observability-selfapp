@@ -1,0 +1,153 @@
+# Unit tests for prometheus/alert.rules.yml. They feed made-up metrics into
+# the rules and check which alerts fire, and when. No running stack needed:
+#
+#   promtool test rules tests/alert.rules.test.yml
+#
+# Series values use promtool's notation: '1x3' = 1 repeated 3 more times,
+# '0+10x40' = start at 0 and add 10 at each step, 40 times. One step = 15s.
+
+rule_files:
+  - ../prometheus/alert.rules.yml
+
+evaluation_interval: 15s
+
+tests:
+  # InstanceDown: must wait for its 1-minute "for" before firing
+  - interval: 15s
+    input_series:
+      - series: 'up{job="selfapp", instance="selfapp:8080"}'
+        values: '1 1 1 0x12' # down from 45s
+    alert_rule_test:
+      - eval_time: 1m # down for only 15s: pending, not firing yet
+        alertname: InstanceDown
+        exp_alerts: []
+      - eval_time: 2m # down for 75s: firing
+        alertname: InstanceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: selfapp
+              instance: selfapp:8080
+            exp_annotations:
+              summary: "selfapp target down"
+              description: "Prometheus can't scrape selfapp:8080 (job selfapp) for more than 1 minute."
+              runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#instancedown"
+
+  # ContainerDown: selfdb stops reporting, selfweb keeps running
+  - interval: 15s
+    input_series:
+      - series: 'container_last_seen{name="selfdb"}'
+        values: '1 1 1 stale' # stops after 45s
+      - series: 'container_last_seen{name="selfweb"}'
+        values: '1x12'
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: ContainerDown
+        exp_alerts: []
+      - eval_time: 2m30s
+        alertname: ContainerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              name: selfdb
+            exp_annotations:
+              summary: "Container selfdb is not running"
+              description: "cAdvisor has not seen the selfdb container for more than 1 minute."
+              runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#containerdown"
+
+  # SelfappHighErrorRate: 10% of requests fail -> fires
+  - interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="selfapp", uri="/", status="200"}'
+        values: '0+90x40'
+      - series: 'http_server_requests_seconds_count{job="selfapp", uri="/add", status="500"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 3m # bad, but not yet for 5 minutes
+        alertname: SelfappHighErrorRate
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: SelfappHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: selfapp
+            exp_annotations:
+              summary: "selfapp: 10% of requests fail"
+              description: "More than 5% of HTTP requests to selfapp returned a 5xx error for 5 minutes."
+              runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#selfapphigherrorrate"
+
+  # SelfappHighErrorRate: 1% of requests fail, and failing healthchecks
+  # (/actuator/*) don't count -> stays quiet
+  - interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_count{job="selfapp", uri="/", status="200"}'
+        values: '0+99x40'
+      - series: 'http_server_requests_seconds_count{job="selfapp", uri="/add", status="500"}'
+        values: '0+1x40'
+      - series: 'http_server_requests_seconds_count{job="selfapp", uri="/actuator/health", status="503"}'
+        values: '0+50x40'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: SelfappHighErrorRate
+        exp_alerts: []
+
+  # SelfappSlowResponses: 90% of requests take 1-2 seconds -> p95 above 1s
+  - interval: 15s
+    input_series:
+      - series: 'http_server_requests_seconds_bucket{job="selfapp", uri="/", le="0.5"}'
+        values: '0+5x40'
+      - series: 'http_server_requests_seconds_bucket{job="selfapp", uri="/", le="1.0"}'
+        values: '0+10x40'
+      - series: 'http_server_requests_seconds_bucket{job="selfapp", uri="/", le="2.0"}'
+        values: '0+100x40'
+      - series: 'http_server_requests_seconds_bucket{job="selfapp", uri="/", le="+Inf"}'
+        values: '0+100x40'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: SelfappSlowResponses
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: selfapp
+            exp_annotations:
+              summary: "selfapp: p95 response time is 1.944s"
+              description: "95% of requests should finish in under 1 second; for 5 minutes they haven't."
+              runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#selfappslowresponses"
+
+  # RabbitMQNoConsumers: the app's listener goes away
+  - interval: 15s
+    input_series:
+      - series: 'rabbitmq_queue_consumers{job="rabbitmq", instance="selfmq:15692"}'
+        values: '1 1 0x20' # no consumers from 30s
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: RabbitMQNoConsumers
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: RabbitMQNoConsumers
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: rabbitmq
+            exp_annotations:
+              summary: "RabbitMQ: no consumers"
+              description: "No application is listening on RabbitMQ's queues, so user.created events pile up unprocessed."
+              runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#rabbitmqnoconsumers"
+
+  # HighCPUUsage: CPU 95% busy (idle grows by only 0.05s per second)
+  - interval: 15s
+    input_series:
+      - series: 'node_cpu_seconds_total{instance="node-exporter:9100", cpu="0", mode="idle"}'
+        values: '0+0.75x40'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: HighCPUUsage
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: node-exporter:9100
+            exp_annotations:
+              summary: "High CPU usage on node-exporter:9100"
+              description: "CPU usage has been above 80% for 2 minutes (now 95%)."
+              runbook_url: "https://github.com/alexiglesias/observability-selfapp/blob/main/docs/runbooks.md#highcpuusage"
