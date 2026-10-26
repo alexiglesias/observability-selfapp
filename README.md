@@ -4,26 +4,6 @@ Capstone observability stack over selfapp-lite: Prometheus for metrics, Grafana 
 
 This is the observability project from the roadmap, adapted to monitor **selfapp-lite** instead of VProfile — attaching to its real `self-net` Docker network and scraping/tailing its real containers (`selfapp`, `selfweb`, `selfdb`) rather than building a parallel demo app.
 
-## Important — read this before starting
-
-**`/actuator/prometheus` will not work yet.** The real `pom.xml` you shared has `spring-boot-starter-actuator` but **not** `micrometer-registry-prometheus`. Actuator alone exposes JSON endpoints (`/actuator/health`, `/actuator/info`); it does not expose Prometheus-format metrics without this extra dependency. The `selfapp` scrape job in `prometheus/prometheus.yml` is left enabled rather than commented out, so it shows up as a clearly failing target at http://localhost:9090/targets — a visible reminder, not a silent gap. To fix it, add to `app/pom.xml`:
-
-```xml
-<dependency>
-  <groupId>io.micrometer</groupId>
-  <artifactId>micrometer-registry-prometheus</artifactId>
-  <scope>runtime</scope>
-</dependency>
-```
-
-and confirm the endpoint is actually exposed over HTTP (being on the classpath alone isn't enough):
-
-```properties
-management.endpoints.web.exposure.include=health,info,prometheus
-```
-
-**Until that's done, the "Application Overview" dashboard's request-rate and error-rate panels will show "No data".** Everything else — system metrics, per-container CPU/memory via cAdvisor, and logs via Loki — works today without touching the app at all.
-
 ## What this deploys
 
 | Component | Role |

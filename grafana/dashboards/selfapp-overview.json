@@ -11,23 +11,23 @@
   "panels": [
     {
       "id": 1,
-      "title": "Request Rate (requires micrometer-registry-prometheus - see README)",
+      "title": "Request Rate",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
-          "expr": "sum by (uri, status) (rate(http_server_requests_seconds_count{job=\"selfapp\"}[5m]))",
+          "expr": "sum by (uri, status) (rate(http_server_requests_seconds_count{job=\"selfapp\",uri!~\"/actuator.*\"}[5m]))",
           "legendFormat": "{{uri}} [{{status}}]",
           "refId": "A"
         }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-      "description": "Standard Spring Boot Micrometer metric name (http_server_requests_seconds_count). This panel will show 'No data' until micrometer-registry-prometheus is added to app/pom.xml and the /actuator/prometheus endpoint is actually exposed — see prometheus/prometheus.yml's comments and the README for the exact dependency to add. Not tested against a running instance with that dependency present."
+            "description": "HTTP requests per second by page and status code, from Spring Boot (http_server_requests_seconds_count). Actuator traffic (Prometheus scrapes, Docker healthchecks) is excluded."
     },
     {
       "id": 2,
-      "title": "Error Rate - 5xx (requires micrometer-registry-prometheus)",
+      "title": "Error Rate - 5xx",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
@@ -39,11 +39,11 @@
         }
       ],
       "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] },
-      "description": "Same dependency requirement as the Request Rate panel."
+      "description": "Server errors (HTTP 5xx) per second."
     },
     {
       "id": 3,
-      "title": "selfapp / selfweb / selfdb - Container CPU (works today, no app changes needed)",
+      "title": "Container CPU (selfapp, selfweb, selfdb)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
@@ -58,7 +58,7 @@
     },
     {
       "id": 4,
-      "title": "selfapp / selfweb / selfdb - Container Memory (works today, no app changes needed)",
+      "title": "Container Memory (selfapp, selfweb, selfdb)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
