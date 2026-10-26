@@ -6,7 +6,7 @@
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
-.PHONY: help up down status logs check test ci incident clean
+.PHONY: help up down status logs check test e2e ci incident clean
 
 # Image of a service, read from docker-compose.yml
 image = $(shell awk '/image: $(1)/ {print $$2; exit}' docker-compose.yml)
@@ -21,7 +21,7 @@ RUN := docker run --rm -v "$(CURDIR)":/work -w /work
 help: ## Show this help
 	@echo "Usage: make <target>"
 	@echo
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) \
+	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) \
 	  | awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-9s\033[0m %s\n", $$1, $$2}'
 
 up: ## Start the stack and wait until it's healthy (start the app first)
@@ -49,7 +49,7 @@ check: ## Validate configs, dashboards and scripts (no running stack needed)
 	@echo "== grafana dashboards"
 	@for f in grafana/dashboards/*.json; do python3 -m json.tool "$$f" >/dev/null || exit 1; done
 	@echo "== shellcheck"
-	@$(RUN) $(SHELLCHECK) scripts/*.sh
+	@$(RUN) $(SHELLCHECK) scripts/*.sh tests/*.sh
 	@echo "All checks passed."
 
 test: ## Unit tests: alert rules, and Alertmanager routing
@@ -62,7 +62,10 @@ test: ## Unit tests: alert rules, and Alertmanager routing
 	  --config.file=alertmanager/alertmanager.yml --verify.receivers=slack-default severity=warning
 	@echo "All tests passed."
 
-ci: check test ## Everything CI runs, in order
+e2e: ## End-to-end test of the running stacks (stops selfapp for a while)
+	@tests/e2e.sh
+
+ci: check test ## Static checks and unit tests (CI also runs e2e on real stacks)
 
 incident: ## Cause a real incident: make incident MODE=cpu|app|db
 	@scripts/simulate-incident.sh $(MODE)

@@ -1,0 +1,14 @@
+# Dependabot opens a PR when a newer version is released, and CI tests it
+# before you merge. The Makefile reads image versions from docker-compose.yml,
+# so the checks always follow these updates. Free on GitHub.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
