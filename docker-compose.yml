@@ -3,6 +3,12 @@ services:
     image: prom/prometheus:v3.15.1
     container_name: obs-prometheus
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9090/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alert.rules.yml:/etc/prometheus/alert.rules.yml:ro
@@ -21,6 +27,12 @@ services:
     image: prom/alertmanager:v0.34.1
     container_name: obs-alertmanager
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9093/-/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager # silences and notification history survive restarts
@@ -38,6 +50,12 @@ services:
     image: grafana/grafana:13.2.4
     container_name: obs-grafana
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
@@ -51,8 +69,10 @@ services:
     networks:
       - obs-net
     depends_on:
-      - prometheus
-      - loki
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_started
 
   loki:
     image: grafana/loki:3.7.9
@@ -93,6 +113,12 @@ services:
     image: prom/node-exporter:v1.12.1
     container_name: obs-node-exporter
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:9100/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
