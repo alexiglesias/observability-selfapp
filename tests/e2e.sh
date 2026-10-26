@@ -34,7 +34,7 @@ wait_for() {
 
 # First value returned by a PromQL query (empty if no result)
 prom_value() {
-  curl -fsS "${PROM}/api/v1/query" --data-urlencode "query=$1" |
+  curl -fsS --max-time 10 "${PROM}/api/v1/query" --data-urlencode "query=$1" |
     python3 -c 'import json, sys; r = json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else "")'
 }
 
@@ -42,7 +42,7 @@ prom_value() {
 has_results() {
   local url=$1
   shift
-  curl -fsS -G "$@" "${url}" |
+  curl -fsS --max-time 10 -G "$@" "${url}" |
     python3 -c 'import json, sys; d = json.load(sys.stdin); d = d["data"]["result"] if isinstance(d, dict) else d; sys.exit(0 if d else 1)'
 }
 
