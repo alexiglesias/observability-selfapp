@@ -3,23 +3,29 @@
 // Live view of this pipeline: http://localhost:12345
 
 // 1. Find the containers to read logs from, through the Docker API.
-//    Only the two Compose projects of this lab: the app and this stack.
 discovery.docker "containers" {
 	host             = "unix:///var/run/docker.sock"
 	refresh_interval = "5s"
 
+	// Only containers started by Docker Compose. (Several values in one
+	// Docker label filter must ALL match, so the two projects are selected
+	// with a relabel rule below instead.)
 	filter {
 		name   = "label"
-		values = [
-			"com.docker.compose.project=docker-buildlab-selfapp",
-			"com.docker.compose.project=observability-selfapp",
-		]
+		values = ["com.docker.compose.project"]
 	}
 }
 
 // 2. Turn Docker's metadata into the labels you filter by in Grafana.
 discovery.relabel "containers" {
 	targets = []
+
+	// Keep only this lab's two Compose projects: the app and this stack
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		regex         = "docker-buildlab-selfapp|observability-selfapp"
+		action        = "keep"
+	}
 
 	// Container name without Docker's leading slash: /selfapp -> selfapp
 	rule {
