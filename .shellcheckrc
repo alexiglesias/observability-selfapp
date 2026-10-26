@@ -1,0 +1,3 @@
+# Shared ShellCheck settings, used by `make check`, pre-commit and CI.
+# Follow `source` statements relative to each script's own directory.
+source-path=SCRIPTDIR
