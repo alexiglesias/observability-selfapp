@@ -1,6 +1,6 @@
 services:
   prometheus:
-    image: prom/prometheus:v2.53.0
+    image: prom/prometheus:v3.15.1
     container_name: obs-prometheus
     restart: unless-stopped
     volumes:
@@ -12,13 +12,13 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle # allows `curl -X POST :9090/-/reload` after editing rules, without a restart
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks:
       - obs-net
       - self-net
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.34.1
     container_name: obs-alertmanager
     restart: unless-stopped
     volumes:
@@ -30,12 +30,12 @@ services:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     networks:
       - obs-net
 
   grafana:
-    image: grafana/grafana-oss:11.1.0
+    image: grafana/grafana:13.2.4
     container_name: obs-grafana
     restart: unless-stopped
     environment:
@@ -47,7 +47,7 @@ services:
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     networks:
       - obs-net
     depends_on:
@@ -55,7 +55,7 @@ services:
       - loki
 
   loki:
-    image: grafana/loki:3.1.0
+    image: grafana/loki:3.7.9
     container_name: obs-loki
     restart: unless-stopped
     volumes:
@@ -63,7 +63,7 @@ services:
       - loki-data:/loki
     command: -config.file=/etc/loki/local-config.yaml
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     networks:
       - obs-net
 
@@ -90,7 +90,7 @@ services:
       - loki
 
   node-exporter:
-    image: prom/node-exporter:v1.8.1
+    image: prom/node-exporter:v1.12.1
     container_name: obs-node-exporter
     restart: unless-stopped
     volumes:
@@ -102,8 +102,6 @@ services:
       - --path.sysfs=/host/sys
       - --path.rootfs=/rootfs
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
-    ports:
-      - "9100:9100"
     networks:
       - obs-net
     # NOTE: on Docker Desktop (macOS/Windows), node-exporter reports
@@ -113,17 +111,21 @@ services:
     # aware of which "host" you're actually looking at.
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: ghcr.io/google/cadvisor:0.60.6
     container_name: obs-cadvisor
     restart: unless-stopped
+    privileged: true # as cAdvisor's docs recommend: full access to the host's cgroups
+    devices:
+      - /dev/kmsg # kernel messages, used for out-of-memory (OOM) events
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro # Docker API: container names and labels
+      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro # containerd API: needed when Docker uses the containerd image store
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     ports:
-      - "8085:8080" # host 8085, since selfweb already uses host port 80 and cAdvisor's own default (8080) is a common collision point with other local tooling
+      - "127.0.0.1:8085:8080" # cAdvisor UI; 8080 inside, 8085 on the Mac 
     networks:
       - obs-net
     # Per-container CPU/memory/network for every container, with no changes
