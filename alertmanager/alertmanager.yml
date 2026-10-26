@@ -1,0 +1,35 @@
+# Alertmanager: groups the alerts Prometheus sends and posts them to Slack.
+# The Slack webhook URL is a secret, so it isn't in this file: Docker Compose
+# mounts it at /run/secrets/slack_webhook from SLACK_WEBHOOK_URL in .env
+# (see the secrets section of docker-compose.yml).
+
+global:
+  resolve_timeout: 5m
+  slack_api_url_file: /run/secrets/slack_webhook
+
+route:
+  receiver: slack-default
+  group_by: ["alertname", "instance"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 3h
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: slack-critical
+      repeat_interval: 30m
+
+# The Slack channel is chosen when the webhook is created, so there's no
+# "channel:" setting here.
+receivers:
+  - name: slack-default
+    slack_configs:
+      - send_resolved: true
+        title: '{{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
+        text: '{{ .CommonAnnotations.description }}'
+
+  - name: slack-critical
+    slack_configs:
+      - send_resolved: true
+        title: ':rotating_light: {{ .Status | toUpper }}: {{ .CommonAnnotations.summary }}'
+        text: '{{ .CommonAnnotations.description }}'

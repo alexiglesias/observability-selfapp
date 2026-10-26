@@ -12,6 +12,12 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+# Warn (don't stop) if the Slack webhook is still a placeholder: everything
+# else works, alerts just can't reach Slack.
+if ! grep -qE '^SLACK_WEBHOOK_URL=https://hooks\.slack\.com/' .env; then
+  echo "[WARN] SLACK_WEBHOOK_URL in .env is not a Slack webhook yet - alerts won't reach Slack." >&2
+fi
+
 # Same variable and default as docker-compose.yml. Read with grep rather
 # than sourcing .env, so nothing in .env gets executed as shell code.
 NETWORK="$(grep -E '^SELFAPP_NETWORK=' .env | cut -d= -f2- || true)"

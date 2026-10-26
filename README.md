@@ -32,16 +32,16 @@ This stack is deliberately a **separate** Compose project rather than merged int
 
 ## Prerequisites
 
-- Docker + Docker Compose v2.20+ (needed for the `service_completed_successfully` depends_on condition — check with `docker compose version`)
+- Docker Desktop or Docker Engine with Docker Compose v2 (check with `docker compose version`)
 - `docker-buildlab-selfapp`'s own `docker-compose.yml` already running (creates the `self-net` network this stack attaches to)
 - A free Slack workspace + an Incoming Webhook (see below)
 
 ## Slack setup
 
-1. In your Slack workspace: **Apps -> Incoming Webhooks -> Add to Slack**.
-2. Choose (or create) a `#alerts` channel.
-3. Copy the generated webhook URL (`https://hooks.slack.com/services/...`).
-4. Put it in `.env` as `SLACK_WEBHOOK_URL` (see below) — never in a tracked file.
+1. Create a channel called `#alerts` in a Slack workspace you own (a free workspace is enough).
+2. Go to https://api.slack.com/apps → **Create New App** → **From scratch**, name it `observability-selfapp` and pick your workspace.
+3. **Incoming Webhooks** → turn **Activate Incoming Webhooks** on → **Add New Webhook** → choose `#alerts` → **Allow**.
+4. Copy the webhook URL (`https://hooks.slack.com/services/...`) into `.env` as `SLACK_WEBHOOK_URL`. Never put it in a tracked file: anyone with the URL can post to your channel.
 
 ## Setup
 
@@ -69,9 +69,9 @@ Two dashboards are pre-provisioned under the "selfapp" folder: **System Overview
 
 Watch http://localhost:9090/alerts for the rule to go from inactive -> pending -> firing, and check the `#alerts` Slack channel for the notification. `InstanceDown` also fires for real if `selfapp` crashes on its own, not just during this deliberate test.
 
-## Why Alertmanager isn't a straight `${VAR}` substitution
+## How the Slack webhook stays out of Git
 
-Docker Compose interpolates `${SLACK_WEBHOOK_URL}` in `docker-compose.yml` itself, but Alertmanager's own config file format does **not** support that — feeding it `alertmanager.yml.template` directly would leave the literal string `${SLACK_WEBHOOK_URL}` in the config and every notification would silently fail. The `alertmanager-init` service in `docker-compose.yml` renders the template into a real config (with the actual webhook substituted in, via `envsubst`) on a shared Docker volume, and Alertmanager only starts after that render step completes (`depends_on: condition: service_completed_successfully`). The real webhook URL only ever exists in `.env` and in that runtime-generated file — never in anything tracked by Git.
+Alertmanager can't read environment variables in its config file, but it can read the webhook from a file (`slack_api_url_file`). Docker Compose creates that file from `SLACK_WEBHOOK_URL` in `.env` (the `secrets:` section of `docker-compose.yml`) and mounts it at `/run/secrets/slack_webhook` in the Alertmanager container only. So `alertmanager/alertmanager.yml` is a normal tracked file with no secrets in it, and the URL exists only in the git-ignored `.env` and in that mounted file.
 
 ## Exporting dashboards (the roadmap's actual deliverable)
 
