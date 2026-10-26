@@ -32,19 +32,15 @@ if ! docker network inspect "${NETWORK}" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[INFO] Network '${NETWORK}' found, bringing up the observability stack..."
-docker compose up -d
+echo "[INFO] Network '${NETWORK}' found, starting the observability stack."
+echo "[INFO] Waiting until every service is healthy (up to 2 minutes)..."
+if ! docker compose up -d --wait --wait-timeout 120; then
+  echo "[ERROR] Some services did not become healthy. Check: docker compose ps" >&2
+  exit 1
+fi
 
-echo "[INFO] Waiting for Grafana to be ready..."
-for _ in $(seq 1 30); do
-  if curl -fs http://localhost:3000/api/health >/dev/null 2>&1; then
-    echo "[DONE] Grafana is up: http://localhost:3000"
-    echo "[DONE] Prometheus:    http://localhost:9090"
-    echo "[DONE] Alertmanager:  http://localhost:9093"
-    echo "[DONE] Targets:       http://localhost:9090/targets (all should be UP)"
-    exit 0
-  fi
-  sleep 2
-done
-
-echo "[WARN] Grafana didn't respond within 60s. Check: docker compose logs grafana" >&2
+echo "[DONE] Grafana:      http://localhost:3000"
+echo "[DONE] Prometheus:   http://localhost:9090"
+echo "[DONE] Alertmanager: http://localhost:9093"
+echo "[DONE] Alloy:        http://localhost:12345"
+echo "[DONE] Targets:      http://localhost:9090/targets (all should be UP)"
