@@ -35,7 +35,8 @@ fi
 echo "[INFO] Network '${NETWORK}' found, starting the observability stack."
 echo "[INFO] Waiting until every service is healthy (up to 2 minutes)..."
 if ! docker compose up -d --wait --wait-timeout 120; then
-  echo "[ERROR] Some services did not become healthy. Check: docker compose ps" >&2
+  echo "[ERROR] The stack did not start: an image download failed or a service is unhealthy." >&2
+  echo "[ERROR] Check the messages above, and: docker compose ps" >&2
   exit 1
 fi
 
