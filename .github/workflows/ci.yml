@@ -79,12 +79,25 @@ jobs:
           sed -i -E "s/^MYSQL_ROOT_PASSWORD=.*/MYSQL_ROOT_PASSWORD=$(openssl rand -hex 16)/" .env
           sed -i -E "s/^DB_PASS=.*/DB_PASS=$(openssl rand -hex 16)/" .env
           sed -i -E "s/^RABBITMQ_PASS=.*/RABBITMQ_PASS=$(openssl rand -hex 16)/" .env
-          docker compose up -d --build --wait --wait-timeout 600
+          # Registry downloads occasionally time out on shared runners: retry
+          for attempt in 1 2 3; do
+            docker compose pull --quiet --ignore-buildable && docker compose build --pull && break
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            echo "Image download failed (attempt $attempt of 3), retrying in 20s..."
+            sleep 20
+          done
+          docker compose up -d --wait --wait-timeout 600
 
       - name: Start the monitoring stack
         working-directory: observability-selfapp
         run: |
           cp .env.example .env
+          for attempt in 1 2 3; do
+            docker compose pull --quiet && break
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            echo "Image download failed (attempt $attempt of 3), retrying in 20s..."
+            sleep 20
+          done
           ./scripts/up.sh
 
       - name: End-to-end test
