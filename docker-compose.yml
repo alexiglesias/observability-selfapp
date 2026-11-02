@@ -46,7 +46,7 @@ services:
       - obs-net
 
   grafana:
-    image: grafana/grafana:13.2.4
+    image: grafana/grafana:13.3.0
     container_name: obs-grafana
     restart: unless-stopped
     healthcheck:
