@@ -23,7 +23,7 @@ services:
       - self-net
 
   alertmanager:
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.34.2
     container_name: obs-alertmanager
     restart: unless-stopped
     healthcheck:
