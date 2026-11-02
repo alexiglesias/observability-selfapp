@@ -89,7 +89,7 @@ services:
   # Collects container logs and ships them to Loki (replaces Promtail, EOL
   # since March 2026). Pipeline UI: http://localhost:12345
   alloy:
-    image: grafana/alloy:v1.21.2
+    image: grafana/alloy:v1.21.3
     container_name: obs-alloy
     restart: unless-stopped
     volumes:
