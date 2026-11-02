@@ -242,7 +242,7 @@ Part of the selfapp series:
 
 - [`docker-buildlab-selfapp`](https://github.com/alexiglesias/docker-buildlab-selfapp): the app this stack monitors
 - [`k8s-selfapp-minikube`](https://github.com/alexiglesias/k8s-selfapp-minikube): the same app on Kubernetes, as a Helm chart
-- [`cicd-github-actions-selfapp`](https://github.com/alexiglesias/cicd-github-actions-selfapp): CI/CD pipeline for the app's images
+- [CI/CD pipeline](https://github.com/alexiglesias/docker-buildlab-selfapp/tree/main/.github/workflows) in docker-buildlab-selfapp: tests, builds, scans and deploys the app's images
 
 ## License
 
